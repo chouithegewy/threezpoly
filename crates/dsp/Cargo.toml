@@ -1,0 +1,8 @@
+[package]
+name = "threezpoly_dsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Host-agnostic DSP core for Threez Poly"
+
+[dependencies]

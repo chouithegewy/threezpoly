@@ -1,0 +1,71 @@
+:root {
+  background-color: #17181c;
+  color: #d8dae0;
+  font-size: 13;
+}
+
+.root {
+  child-space: 14px;
+  row-between: 12px;
+}
+
+.title {
+  font-family: "Noto Sans";
+  font-weight: bold;
+  font-size: 20;
+  color: #ff8a3d;
+  height: 26px;
+}
+
+.row {
+  height: auto;
+  col-between: 12px;
+}
+
+.panel {
+  width: 1s;
+  height: auto;
+  child-space: 10px;
+  row-between: 6px;
+  background-color: #22242a;
+  border-radius: 6px;
+}
+
+.panel-title {
+  font-weight: bold;
+  color: #ff8a3d;
+  height: 18px;
+}
+
+.pair {
+  height: auto;
+  col-between: 8px;
+}
+
+.control {
+  height: auto;
+  width: 1s;
+  row-between: 2px;
+}
+
+.label {
+  color: #8d919c;
+  font-size: 11;
+  height: 14px;
+}
+
+param-slider {
+  width: 1s;
+  height: 22px;
+  border-color: #3a3d46;
+  border-radius: 3px;
+}
+
+param-slider .fill {
+  background-color: #ff8a3d55;
+}
+
+param-slider:hover,
+param-slider:active {
+  background-color: #ffffff10;
+}
