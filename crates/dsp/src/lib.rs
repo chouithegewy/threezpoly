@@ -8,11 +8,13 @@ pub mod envelope;
 pub mod filter;
 pub mod osc;
 pub mod synth;
+pub mod unison;
 pub mod voice;
 
 pub use envelope::EnvSettings;
-pub use filter::{FilterMode, FilterSettings};
+pub use filter::{FilterMode, FilterSettings, GlobalFilterSettings};
 pub use osc::{OscSettings, Waveform};
+pub use unison::{UnisonSettings, MAX_UNISON};
 pub use synth::{Synth, SynthParams, TerminatedVoice, MAX_VOICES, NUM_OSCS};
 
 /// Converts a (fractional) MIDI note number to a frequency in Hz, with A4 (note 69) at 440 Hz.

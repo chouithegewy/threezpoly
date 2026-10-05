@@ -4,6 +4,7 @@ use threezpoly_dsp::Synth;
 
 mod editor;
 mod params;
+mod routing_view;
 
 use params::ThreezParams;
 

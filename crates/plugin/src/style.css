@@ -31,10 +31,17 @@
   border-radius: 6px;
 }
 
+.panel-header {
+  height: 22px;
+  col-between: 4px;
+}
+
 .panel-title {
   font-weight: bold;
   color: #ff8a3d;
-  height: 18px;
+  width: 1s;
+  child-top: 1s;
+  child-bottom: 1s;
 }
 
 .pair {
@@ -68,4 +75,42 @@ param-slider .fill {
 param-slider:hover,
 param-slider:active {
   background-color: #ffffff10;
+}
+
+/* Routing buttons (→ F1, → F2, 1 → 2) */
+param-button.route {
+  height: 20px;
+  child-left: 6px;
+  child-right: 6px;
+  font-size: 11;
+  color: #8d919c;
+  border-color: #3a3d46;
+  border-radius: 3px;
+  background-color: transparent;
+}
+
+param-button.route:hover {
+  background-color: #ffffff10;
+}
+
+param-button.route:checked {
+  background-color: #ff8a3d;
+  border-color: #ff8a3d;
+  color: #17181c;
+}
+
+/* Signal flow diagram */
+.routing {
+  height: 150px;
+  background-color: #1d1f24;
+  border-radius: 6px;
+}
+
+.node-label {
+  font-size: 11;
+  color: #6c707b;
+}
+
+.node-label.active {
+  color: #ffd2b3;
 }

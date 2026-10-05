@@ -4,6 +4,8 @@ use std::f32::consts::PI;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterMode {
+    /// Passes the signal through untouched (an empty filter slot).
+    Off,
     LowPass12,
     LowPass24,
     BandPass,
@@ -35,6 +37,29 @@ impl Default for FilterSettings {
             env_amount: 2.0,
             key_track: 0.5,
         }
+    }
+}
+
+impl FilterSettings {
+    /// Settings for a slot that starts out empty.
+    pub fn off() -> Self {
+        Self { mode: FilterMode::Off, cutoff: 1_000.0, env_amount: 0.0, ..Self::default() }
+    }
+}
+
+/// The global filter acts on the summed output of all voices, so it has no per-note envelope or
+/// key tracking.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GlobalFilterSettings {
+    pub mode: FilterMode,
+    pub cutoff: f32,
+    pub resonance: f32,
+    pub drive: f32,
+}
+
+impl Default for GlobalFilterSettings {
+    fn default() -> Self {
+        Self { mode: FilterMode::Off, cutoff: 8_000.0, resonance: 0.0, drive: 0.0 }
     }
 }
 
@@ -88,19 +113,24 @@ impl Filter {
         drive: f32,
         sample_rate: f32,
     ) -> f32 {
-        let cutoff = cutoff.clamp(20.0, sample_rate * 0.45);
-        let g = (PI * cutoff / sample_rate).tan();
-        // k = 2 is no resonance, k -> 0 self-oscillates
-        let k = 2.0 - 1.98 * resonance.clamp(0.0, 1.0);
+        self.tick(x, mode, &FilterCoeffs::new(cutoff, resonance, drive, sample_rate))
+    }
 
-        let x = if drive > 0.0 {
-            let gain = 1.0 + drive * 9.0;
-            (x * gain).tanh() / gain.sqrt()
+    /// Filters one sample with precomputed coefficients, so a stereo pair can share them.
+    #[inline]
+    pub fn tick(&mut self, x: f32, mode: FilterMode, c: &FilterCoeffs) -> f32 {
+        if mode == FilterMode::Off {
+            return x;
+        }
+        let (g, k) = (c.g, c.k);
+        let x = if c.drive_gain > 1.0 {
+            (x * c.drive_gain).tanh() / c.drive_gain.sqrt()
         } else {
             x
         };
 
         let y = match mode {
+            FilterMode::Off => unreachable!(),
             FilterMode::LowPass12 => self.stage1.tick(x, g, k).low,
             FilterMode::LowPass24 => {
                 // Splitting the resonance keeps the cascade from ringing twice as hard
@@ -117,6 +147,27 @@ impl Filter {
         } else {
             self.reset();
             0.0
+        }
+    }
+}
+
+/// Per-sample filter coefficients.
+#[derive(Debug, Clone, Copy)]
+pub struct FilterCoeffs {
+    g: f32,
+    k: f32,
+    drive_gain: f32,
+}
+
+impl FilterCoeffs {
+    #[inline]
+    pub fn new(cutoff: f32, resonance: f32, drive: f32, sample_rate: f32) -> Self {
+        let cutoff = cutoff.clamp(20.0, sample_rate * 0.45);
+        Self {
+            g: (PI * cutoff / sample_rate).tan(),
+            // k = 2 is no resonance, k -> 0 self-oscillates
+            k: 2.0 - 1.98 * resonance.clamp(0.0, 1.0),
+            drive_gain: 1.0 + drive.max(0.0) * 9.0,
         }
     }
 }

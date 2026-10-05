@@ -8,8 +8,15 @@ with a [vizia](https://github.com/vizia/vizia) GUI. Exports CLAP and VST3.
 - **3 oscillators**: sine, saw, square (with pulse width), triangle, noise. PolyBLEP anti-aliasing.
 - **Per-oscillator tuning**: octave (±4), semitone (±12), fine (±100 cents), and key tracking
   (off pins the oscillator to C4 plus its tuning offset, for drones and fixed-pitch sources).
-- **Filter**: zero-delay-feedback SVF with LP 12, LP 24, BP and HP modes. Resonance up to
-  self-oscillation, drive, envelope amount (±8 octaves) and keyboard tracking.
+- **Unison**: 1–8 copies of every oscillator, detune up to ±100 cents and stereo spread. Copies
+  start at random phases; at zero spread the voice stays mono and runs a single filter.
+- **Thor-style filter routing**: each oscillator has **→ F1** / **→ F2** buttons choosing which
+  per-voice filter slot(s) it feeds. **1 → 2** chains filter 1 into filter 2; otherwise both run
+  in parallel into the amp. A **global filter** then shapes the sum of all voices.
+- **Filters**: zero-delay-feedback SVF with LP 12, LP 24, BP and HP modes, or Off (pass-through).
+  Per slot: cutoff, resonance up to self-oscillation, drive, envelope amount (±8 octaves) and
+  keyboard tracking. Slots that receive no signal cost no CPU.
+- **Signal-flow diagram** at the top of the editor that lights up the active routes.
 - **Envelopes**: ADSR for the filter and the amplifier.
 - **16 voices**: retrigger on repeated notes, steal the oldest released voice first.
 - **Pitch bend** (range 0–24 semitones) and velocity sensitivity.
@@ -37,6 +44,7 @@ Then:
 
 ```
 cargo test -p threezpoly_dsp          # engine unit tests
+cargo run --release -p threezpoly_dsp --example cpu_worst_case   # CPU check, all voices + unison
 cargo xtask bundle threezpoly --release
 ```
 

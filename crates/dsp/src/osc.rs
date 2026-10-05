@@ -31,6 +31,10 @@ pub struct OscSettings {
     /// When false the oscillator ignores the played note and stays at [`FIXED_PITCH_NOTE`]
     /// (plus its tuning offset), which is useful for drones and fixed-pitch FM sources.
     pub key_track: bool,
+    /// Routes this oscillator into the voice's first filter slot.
+    pub to_filter1: bool,
+    /// Routes this oscillator into the voice's second filter slot.
+    pub to_filter2: bool,
 }
 
 impl Default for OscSettings {
@@ -43,6 +47,8 @@ impl Default for OscSettings {
             level: 0.0,
             pulse_width: 0.5,
             key_track: true,
+            to_filter1: true,
+            to_filter2: false,
         }
     }
 }

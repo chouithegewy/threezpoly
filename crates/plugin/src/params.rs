@@ -29,14 +29,22 @@ impl From<Waveform> for dsp::Waveform {
     }
 }
 
+/// The stable `#[id]`s keep saved values valid if variants are added or reordered.
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterMode {
+    #[id = "off"]
+    #[name = "Off"]
+    Off,
+    #[id = "lp12"]
     #[name = "LP 12"]
     LowPass12,
+    #[id = "lp24"]
     #[name = "LP 24"]
     LowPass24,
+    #[id = "bp"]
     #[name = "BP"]
     BandPass,
+    #[id = "hp"]
     #[name = "HP"]
     HighPass,
 }
@@ -44,10 +52,23 @@ pub enum FilterMode {
 impl From<FilterMode> for dsp::FilterMode {
     fn from(m: FilterMode) -> Self {
         match m {
+            FilterMode::Off => dsp::FilterMode::Off,
             FilterMode::LowPass12 => dsp::FilterMode::LowPass12,
             FilterMode::LowPass24 => dsp::FilterMode::LowPass24,
             FilterMode::BandPass => dsp::FilterMode::BandPass,
             FilterMode::HighPass => dsp::FilterMode::HighPass,
+        }
+    }
+}
+
+impl From<dsp::FilterMode> for FilterMode {
+    fn from(m: dsp::FilterMode) -> Self {
+        match m {
+            dsp::FilterMode::Off => FilterMode::Off,
+            dsp::FilterMode::LowPass12 => FilterMode::LowPass12,
+            dsp::FilterMode::LowPass24 => FilterMode::LowPass24,
+            dsp::FilterMode::BandPass => FilterMode::BandPass,
+            dsp::FilterMode::HighPass => FilterMode::HighPass,
         }
     }
 }
@@ -61,14 +82,27 @@ pub struct ThreezParams {
     #[nested(array, group = "Oscillator")]
     pub oscs: [OscParams; dsp::NUM_OSCS],
 
-    #[nested(group = "Filter")]
-    pub filter: FilterParams,
+    /// No ID prefix so filter 1 keeps the IDs from before there were two slots.
+    #[nested(group = "Filter 1")]
+    pub filter1: FilterParams,
+
+    #[nested(id_prefix = "f2", group = "Filter 2")]
+    pub filter2: FilterParams,
+
+    #[id = "f1tof2"]
+    pub filter1_to_filter2: BoolParam,
+
+    #[nested(group = "Global Filter")]
+    pub global_filter: GlobalFilterParams,
 
     #[nested(id_prefix = "fenv", group = "Filter Envelope")]
     pub filter_env: EnvParams,
 
     #[nested(id_prefix = "aenv", group = "Amp Envelope")]
     pub amp_env: EnvParams,
+
+    #[nested(group = "Unison")]
+    pub unison: UnisonParams,
 
     #[id = "velsens"]
     pub velocity_sensitivity: FloatParam,
@@ -96,6 +130,10 @@ pub struct OscParams {
     pub pulse_width: FloatParam,
     #[id = "ktrack"]
     pub key_track: BoolParam,
+    #[id = "tof1"]
+    pub to_filter1: BoolParam,
+    #[id = "tof2"]
+    pub to_filter2: BoolParam,
 }
 
 #[derive(Params)]
@@ -115,6 +153,28 @@ pub struct FilterParams {
 }
 
 #[derive(Params)]
+pub struct GlobalFilterParams {
+    #[id = "gmode"]
+    pub mode: EnumParam<FilterMode>,
+    #[id = "gcutoff"]
+    pub cutoff: FloatParam,
+    #[id = "gres"]
+    pub resonance: FloatParam,
+    #[id = "gdrive"]
+    pub drive: FloatParam,
+}
+
+#[derive(Params)]
+pub struct UnisonParams {
+    #[id = "uvoices"]
+    pub voices: IntParam,
+    #[id = "udetune"]
+    pub detune: FloatParam,
+    #[id = "uspread"]
+    pub spread: FloatParam,
+}
+
+#[derive(Params)]
 pub struct EnvParams {
     #[id = "a"]
     pub attack: FloatParam,
@@ -131,6 +191,17 @@ fn percent(name: impl Into<String>, default: f32) -> FloatParam {
         .with_unit("%")
         .with_value_to_string(formatters::v2s_f32_percentage(0))
         .with_string_to_value(formatters::s2v_f32_percentage())
+}
+
+fn cutoff(name: impl Into<String>, default: f32) -> FloatParam {
+    FloatParam::new(
+        name,
+        default,
+        FloatRange::Skewed { min: 20.0, max: 20_000.0, factor: FloatRange::skew_factor(-2.2) },
+    )
+    .with_smoother(SmoothingStyle::Logarithmic(20.0))
+    .with_value_to_string(formatters::v2s_f32_hz_then_khz(1))
+    .with_string_to_value(formatters::s2v_f32_hz_then_khz())
 }
 
 fn seconds(name: impl Into<String>, default: f32) -> FloatParam {
@@ -166,6 +237,8 @@ impl OscParams {
                 .with_smoother(SmoothingStyle::Linear(10.0)),
             pulse_width: percent(format!("Osc {n} PW"), 0.5).with_smoother(SmoothingStyle::Linear(10.0)),
             key_track: BoolParam::new(format!("Osc {n} Key Track"), true),
+            to_filter1: BoolParam::new(format!("Osc {n} to Filter 1"), defaults.to_filter1),
+            to_filter2: BoolParam::new(format!("Osc {n} to Filter 2"), defaults.to_filter2),
         }
     }
 
@@ -178,6 +251,8 @@ impl OscParams {
             level: self.level.smoothed.next_step(steps),
             pulse_width: self.pulse_width.smoothed.next_step(steps),
             key_track: self.key_track.value(),
+            to_filter1: self.to_filter1.value(),
+            to_filter2: self.to_filter2.value(),
         }
     }
 }
@@ -202,25 +277,46 @@ impl EnvParams {
     }
 }
 
-impl Default for FilterParams {
-    fn default() -> Self {
-        let d = dsp::FilterSettings::default();
+impl FilterParams {
+    fn new(prefix: &str, d: dsp::FilterSettings) -> Self {
         Self {
-            mode: EnumParam::new("Filter Mode", FilterMode::LowPass24),
-            cutoff: FloatParam::new(
-                "Cutoff",
-                d.cutoff,
-                FloatRange::Skewed { min: 20.0, max: 20_000.0, factor: FloatRange::skew_factor(-2.2) },
+            mode: EnumParam::new(format!("{prefix} Mode"), d.mode.into()),
+            cutoff: cutoff(format!("{prefix} Cutoff"), d.cutoff),
+            resonance: percent(format!("{prefix} Resonance"), d.resonance)
+                .with_smoother(SmoothingStyle::Linear(10.0)),
+            drive: percent(format!("{prefix} Drive"), d.drive).with_smoother(SmoothingStyle::Linear(10.0)),
+            env_amount: FloatParam::new(
+                format!("{prefix} Env Amount"),
+                d.env_amount,
+                FloatRange::Linear { min: -8.0, max: 8.0 },
             )
-            .with_smoother(SmoothingStyle::Logarithmic(20.0))
-            .with_value_to_string(formatters::v2s_f32_hz_then_khz(1))
-            .with_string_to_value(formatters::s2v_f32_hz_then_khz()),
-            resonance: percent("Resonance", d.resonance).with_smoother(SmoothingStyle::Linear(10.0)),
-            drive: percent("Drive", d.drive).with_smoother(SmoothingStyle::Linear(10.0)),
-            env_amount: FloatParam::new("Env Amount", d.env_amount, FloatRange::Linear { min: -8.0, max: 8.0 })
-                .with_unit(" oct")
-                .with_value_to_string(formatters::v2s_f32_rounded(2)),
-            key_track: percent("Filter Key Track", d.key_track),
+            .with_unit(" oct")
+            .with_value_to_string(formatters::v2s_f32_rounded(2)),
+            key_track: percent(format!("{prefix} Key Track"), d.key_track),
+        }
+    }
+}
+
+impl Default for GlobalFilterParams {
+    fn default() -> Self {
+        let d = dsp::GlobalFilterSettings::default();
+        Self {
+            mode: EnumParam::new("Global Filter Mode", d.mode.into()),
+            cutoff: cutoff("Global Filter Cutoff", d.cutoff),
+            resonance: percent("Global Filter Resonance", d.resonance)
+                .with_smoother(SmoothingStyle::Linear(10.0)),
+            drive: percent("Global Filter Drive", d.drive).with_smoother(SmoothingStyle::Linear(10.0)),
+        }
+    }
+}
+
+impl GlobalFilterParams {
+    pub fn snapshot(&self, steps: u32) -> dsp::GlobalFilterSettings {
+        dsp::GlobalFilterSettings {
+            mode: self.mode.value().into(),
+            cutoff: self.cutoff.smoothed.next_step(steps),
+            resonance: self.resonance.smoothed.next_step(steps),
+            drive: self.drive.smoothed.next_step(steps),
         }
     }
 }
@@ -238,15 +334,47 @@ impl FilterParams {
     }
 }
 
+impl Default for UnisonParams {
+    fn default() -> Self {
+        let d = dsp::UnisonSettings::default();
+        Self {
+            voices: IntParam::new("Unison", d.voices as i32, IntRange::Linear { min: 1, max: dsp::MAX_UNISON as i32 }),
+            detune: FloatParam::new(
+                "Unison Detune",
+                d.detune_cents,
+                FloatRange::Skewed { min: 0.0, max: 100.0, factor: FloatRange::skew_factor(-1.0) },
+            )
+            .with_smoother(SmoothingStyle::Linear(20.0))
+            .with_unit(" ct")
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            spread: percent("Unison Spread", d.spread).with_smoother(SmoothingStyle::Linear(20.0)),
+        }
+    }
+}
+
+impl UnisonParams {
+    pub fn snapshot(&self, steps: u32) -> dsp::UnisonSettings {
+        dsp::UnisonSettings {
+            voices: self.voices.value() as usize,
+            detune_cents: self.detune.smoothed.next_step(steps),
+            spread: self.spread.smoothed.next_step(steps),
+        }
+    }
+}
+
 impl Default for ThreezParams {
     fn default() -> Self {
         let d = dsp::SynthParams::default();
         Self {
             editor_state: editor::default_state(),
             oscs: std::array::from_fn(OscParams::new),
-            filter: FilterParams::default(),
+            filter1: FilterParams::new("Filter 1", d.filter1),
+            filter2: FilterParams::new("Filter 2", d.filter2),
+            filter1_to_filter2: BoolParam::new("Filter 1 to Filter 2", d.filter1_to_filter2),
+            global_filter: GlobalFilterParams::default(),
             filter_env: EnvParams::new("Filter Env", d.filter_env),
             amp_env: EnvParams::new("Amp Env", d.amp_env),
+            unison: UnisonParams::default(),
             velocity_sensitivity: percent("Velocity", d.velocity_sensitivity),
             bend_range: IntParam::new("Bend Range", d.bend_range as i32, IntRange::Linear { min: 0, max: 24 })
                 .with_unit(" st"),
@@ -272,9 +400,13 @@ impl ThreezParams {
     pub fn snapshot(&self, steps: u32) -> dsp::SynthParams {
         dsp::SynthParams {
             oscs: std::array::from_fn(|i| self.oscs[i].snapshot(steps)),
-            filter: self.filter.snapshot(steps),
+            filter1: self.filter1.snapshot(steps),
+            filter2: self.filter2.snapshot(steps),
+            filter1_to_filter2: self.filter1_to_filter2.value(),
+            global_filter: self.global_filter.snapshot(steps),
             amp_env: self.amp_env.snapshot(),
             filter_env: self.filter_env.snapshot(),
+            unison: self.unison.snapshot(steps),
             velocity_sensitivity: self.velocity_sensitivity.value(),
             bend_range: self.bend_range.value() as f32,
             gain: self.gain.smoothed.next_step(steps),
